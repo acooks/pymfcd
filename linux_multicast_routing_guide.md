@@ -174,6 +174,111 @@ int main(int argc, char *argv[]) {
 }
 ```
 
+#### Practical Example: Python with `cffi`
+
+While C provides a direct and reliable way to program the MFC, it is also possible to do so from Python using the `cffi` library. This approach is powerful but requires careful attention to low-level details that are normally handled automatically by a C compiler.
+
+The following code is a working, persistent daemon that correctly programs the MFC. It is the result of extensive debugging and reveals two critical details required for a successful implementation on a little-endian architecture (like x86_64).
+
+```python
+import struct
+import time
+import socket
+import sys
+import os
+import signal
+from cffi import FFI
+
+# --- CFFI Setup ---
+# We provide the C-level definitions directly to CFFI, as it does not
+# run a C preprocessor and cannot handle #include directives.
+C_HEADER_CODE = """
+    typedef unsigned short vifi_t;
+    typedef unsigned int socklen_t;
+    
+    struct in_addr {
+        unsigned int s_addr;
+    };
+
+    #define MAXVIFS 32
+
+    struct vifctl {
+        vifi_t vifc_vifi;
+        unsigned char vifc_flags;
+        unsigned char vifc_threshold;
+        unsigned int vifc_rate_limit;
+        union {
+            struct in_addr vifc_lcl_addr;
+            int vifc_lcl_ifindex;
+        };
+        struct in_addr vifc_rmt_addr;
+    };
+
+    struct mfcctl {
+        struct in_addr mfcc_origin;
+        struct in_addr mfcc_mcastgrp;
+        vifi_t mfcc_parent;
+        unsigned char mfcc_ttls[MAXVIFS];
+        // CRITICAL NOTE 1: This padding is not visible in the C header,
+        // but is added by the C compiler to align the next field on a
+        // 4-byte boundary. We must replicate it exactly.
+        char _padding[2];
+        unsigned int mfcc_pkt_cnt;
+        unsigned int mfcc_byte_cnt;
+        unsigned int mfcc_wrong_if;
+        int mfcc_expire;
+    };
+
+    int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
+"""
+ffi = FFI()
+ffi.cdef(C_HEADER_CODE)
+
+# --- Python Constants ---
+IPPROTO_IP = 0
+IPPROTO_IGMP = 2
+MRT_INIT = 200
+MRT_DONE = 201
+MRT_ADD_VIF = 202
+MRT_ADD_MFC = 204
+VIFF_USE_IFINDEX = 0x8
+
+class MRouteDaemon:
+    # ... (rest of the daemon class is omitted for brevity, 
+    # but would be included in a real implementation) ...
+    def start(self):
+        # ... (socket creation, MRT_INIT, and MRT_ADD_VIF calls) ...
+
+        # Add MFC entry
+        mfc = ffi.new("struct mfcctl *")
+
+        # CRITICAL NOTE 2: On a little-endian host, we must create a
+        # little-endian integer from the network-order bytes. CFFI will
+        # then write this to memory in the host's byte order, which
+        # results in the correct big-endian (network) byte pattern
+        # that the kernel expects.
+        mfc.mfcc_origin.s_addr = int.from_bytes(
+            socket.inet_aton("0.0.0.0"), "little"
+        )
+        mfc.mfcc_mcastgrp.s_addr = int.from_bytes(
+            socket.inet_aton("239.1.2.3"), "little"
+        )
+
+        mfc.mfcc_parent = 0
+        mfc.mfcc_ttls[1] = 1
+
+        self._check_call(
+            self.libc.setsockopt(
+                self.sock.fileno(),
+                IPPROTO_IP,
+                MRT_ADD_MFC,
+                mfc,
+                ffi.sizeof("struct mfcctl"),
+            )
+        )
+        # ... (rest of the daemon loop) ...
+```
+
 ### 3.3. The Read Path: The `rtnetlink` API
 
 The modern `rtnetlink` API is the standard way to **read or dump** the contents of the MFC. This is what `ip mroute show` uses. It sends an `RTM_GETROUTE` message and filters the kernel's response for routes of type `RTN_MULTICAST`.

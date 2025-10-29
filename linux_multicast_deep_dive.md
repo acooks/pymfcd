@@ -182,6 +182,11 @@ The kernel header `rtnetlink.h` also defines message types like `RTM_GETMULTICAS
 
 **Conclusion on APIs:** For direct, reliable manipulation of the kernel's MFC from a userspace application, the legacy `setsockopt` API is the proven and validated method. The `rtnetlink` API's role in this specific task remains ambiguous.
 
+**A Note on Foreign Function Interfaces (FFI):** While it is possible to call this legacy API from high-level languages like Python, developers must exercise extreme caution. The successful use of FFI libraries (like Python's `cffi`) requires a deep understanding of C-level details that are normally handled by the compiler. Our investigation revealed two critical, non-obvious requirements for a successful Python implementation on a little-endian architecture:
+1.  The `struct mfcctl` definition must include 2 bytes of explicit padding to match the memory alignment created by a C compiler.
+2.  The integer values for IP addresses must be converted to little-endian format in Python, so that when they are written to memory in the host's native byte order, they result in the correct big-endian byte pattern that the kernel expects.
+Failure to account for these details will result in `[Errno 22] Invalid argument` errors that can be difficult to debug.
+
 ---
 
 ## Part 4: Practical Implementation and Verification
