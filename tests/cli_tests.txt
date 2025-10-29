@@ -1,0 +1,28 @@
+# Test Plan for mfc_cli.py
+
+This plan outlines the unit tests for the CLI client component. All interactions with the daemon (Unix Domain Socket communication) will be mocked to test the CLI in isolation.
+
+## 1. Argument Parsing
+
+- `test_parse_mfc_add_any_source`: Verify that `mfc add --group <G> --iif <IF> --oifs <IF1>,<IF2>` is parsed correctly.
+- `test_parse_mfc_add_source_specific`: Verify that `mfc add --source <S> --group <G> --iif <IF> --oifs <IF1>` is parsed correctly.
+- `test_parse_mfc_del`: Verify that `mfc del --group <G>` is parsed correctly.
+- `test_parse_show`: Verify that the `show` command is parsed correctly.
+- `test_parse_missing_required_arg`: Verify that commands with missing required arguments (e.g., `mfc add --group <G>`) fail and print a helpful error message.
+- `test_parse_global_flags`: Verify that global flags like `--dry-run` and `--verbose` are correctly parsed and stored.
+
+## 2. JSON Message Construction
+
+- `test_build_add_mfc_json`: Verify that a parsed `mfc add` command is translated into the correct JSON request structure for the daemon.
+- `test_build_del_mfc_json`: Verify that a parsed `mfc del` command is translated into the correct JSON request.
+- `test_build_show_json`: Verify that a `show` command constructs the simple `{"action": "SHOW"}` request.
+- `test_dry_run_flag_in_json`: Verify that when the `--dry-run` flag is used, the resulting JSON request correctly includes `"dry_run": true`.
+
+## 3. Daemon Response Handling and Output Formatting
+
+- `test_handle_success_response`: Verify that a generic success response from the (mocked) daemon (`{"status": "success", "message": "..."}`) is printed to the user in a clean, human-readable format.
+- `test_handle_error_response`: Verify that an error response (`{"status": "error", "message": "..."}`) is printed clearly to stderr.
+- `test_format_show_output`: Verify that a successful `SHOW` response containing a list of VIFs and MFC rules is formatted into a clean, aligned table for the user.
+- `test_format_show_output_empty`: Verify that if the `SHOW` response contains no rules, the CLI prints a simple "(empty)" message instead of a table header.
+- `test_verbose_output`: Verify that when the `--verbose` flag is used, the raw JSON request and response are printed to the console in addition to the normal output.
+- `test_connection_error`: Verify that if the CLI cannot connect to the daemon's socket, it prints a clear, user-friendly error message (e.g., "Error: Could not connect to daemon. Is it running?").

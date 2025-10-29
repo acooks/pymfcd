@@ -1,0 +1,43 @@
+# Test Plan for mfc_daemon.py
+
+This plan outlines the unit tests for the daemon component. All interactions with the kernel (`cffi` calls) and the filesystem will be mocked to ensure isolated and fast tests.
+
+## 1. Initialization and State Loading
+
+- `test_init_success`: Verify that on startup, the daemon successfully calls `MRT_INIT` and binds to its Unix Domain Socket.
+- `test_init_kernel_failure`: Verify that if `MRT_INIT` fails, the daemon logs a fatal error and exits gracefully.
+- `test_state_load_from_valid_file`: Verify that the daemon correctly reads a valid state file on startup, restores its internal VIF map and MFC rules, and applies them to the (mocked) kernel.
+- `test_state_load_from_nonexistent_file`: Verify that if the state file doesn't exist, the daemon starts with a clean, empty state.
+- `test_state_load_from_corrupted_file`: Verify that if the state file is malformed (e.g., invalid JSON), the daemon logs an error and starts with a clean state, rather than crashing.
+
+## 2. VIF Management Logic
+
+- `test_vif_creation_for_new_interface`: Verify that when a new interface is used in a rule, a VIF is correctly allocated with the next available index and the mapping is stored.
+- `test_vif_retrieval_for_existing_interface`: Verify that when an interface is used again, its existing VIF index is correctly retrieved from the internal map.
+- `test_vif_creation_limit`: Verify that the daemon refuses to create more than `MAXVIFS` (32) VIFs and returns a clear error.
+- `test_vif_deletion_unused`: Verify that an unused VIF can be successfully deleted.
+- `test_vif_deletion_in_use`: Verify that attempting to delete a VIF that is currently used by one or more MFC rules fails with a clear error message.
+
+## 3. MFC Rule Management & Transactional Logic
+
+- `test_add_mfc_rule_any_source`: Verify successful creation of a `(*,G)` rule, including the automatic creation of any necessary VIFs.
+- `test_add_mfc_rule_source_specific`: Verify successful creation of an `(S,G)` rule.
+- `test_add_mfc_rule_with_nonexistent_interface`: Verify that adding a rule with an interface that doesn't exist on the system fails validation.
+- `test_add_duplicate_mfc_rule`: Verify that attempting to add a rule that already exists is handled gracefully (e.g., returns a success or a specific "already exists" message).
+- `test_delete_mfc_rule`: Verify that an existing MFC rule can be successfully deleted.
+- `test_delete_nonexistent_mfc_rule`: Verify that attempting to delete a rule that does not exist fails with a clear error.
+- `test_transactional_rollback_on_mfc_failure`: **CRITICAL:** Simulate a failure on the `MRT_ADD_MFC` call. Verify that any VIFs that were newly created *for that specific transaction* are automatically rolled back (deleted) to maintain a consistent state.
+
+## 4. State Persistence
+
+- `test_state_file_written_on_add`: Verify that after a successful `ADD_MFC` transaction, the daemon's `save_state` method is called and writes the new, complete state to the (mocked) filesystem.
+- `test_state_file_written_on_del`: Verify that after a successful `DEL_MFC` transaction, the `save_state` method is called.
+- `test_atomic_write`: Verify that the state file is written atomically (e.g., write to a temporary file, then rename) to prevent corruption if the daemon crashes mid-write.
+
+## 5. IPC Command Handling
+
+- `test_handle_valid_add_mfc_command`: Verify that a valid JSON `ADD_MFC` request is correctly parsed and dispatched to the internal rule management logic.
+- `test_handle_valid_del_mfc_command`: Verify that a valid JSON `DEL_MFC` request is correctly parsed.
+- `test_handle_show_command`: Verify that a `SHOW` request correctly returns a JSON object containing the current VIF map and MFC rules.
+- `test_handle_malformed_json`: Verify that if the daemon receives invalid JSON, it returns a structured error response and does not crash.
+- `test_handle_invalid_command_payload`: Verify that a command with a valid action but missing or invalid payload fields (e.g., a bad IP address) is rejected by the validation layer.

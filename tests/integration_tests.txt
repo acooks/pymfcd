@@ -1,0 +1,37 @@
+# Test Plan for Integration Tests
+
+This plan outlines the integration tests for the `mfc_cli.py` and `mfc_daemon.py` components. These tests will run a live (but temporary) instance of the daemon and execute the CLI against it, verifying the end-to-end flow. Kernel calls will still be mocked to allow for testing without root privileges and to simulate failure conditions.
+
+## 1. Test Fixture and Environment
+
+- A pytest fixture will be created to manage the lifecycle of the test daemon.
+- `setup`: The fixture will start the daemon process in the background, configured to use a temporary Unix Domain Socket and a temporary state file. It will wait until the daemon is ready to accept connections.
+- `teardown`: The fixture will terminate the daemon process and clean up the temporary socket and state files.
+
+## 2. End-to-End "Happy Path" Workflow
+
+- `test_add_show_del_show`: This test simulates a full user workflow.
+    1.  Run the CLI `mfc add` command. Verify it exits with code 0 and prints a success message.
+    2.  Run the CLI `show` command. Verify that the output contains the exact rule that was just added.
+    3.  Run the CLI `mfc del` command for that same rule. Verify it exits with code 0 and prints a success message.
+    4.  Run the CLI `show` command again. Verify that the output is now empty.
+
+## 3. Error Handling and Validation Flow
+
+- `test_add_with_nonexistent_interface`: Run the CLI `mfc add` command, providing an interface name that the (mocked) daemon knows does not exist on the system. Verify that the CLI exits with a non-zero status code and prints the clear error message forwarded from the daemon.
+- `test_delete_nonexistent_rule`: Add a rule, then attempt to use the CLI to delete a *different* rule. Verify that the CLI reports the failure correctly.
+
+## 4. Dry Run Integration Test
+
+- `test_dry_run_does_not_change_state`:
+    1.  Run the CLI `show` command and verify the state is empty.
+    2.  Run the CLI `mfc add` command with the `--dry-run` flag. Verify the output indicates a successful dry run.
+    3.  Run the CLI `show` command again. **CRITICAL:** Verify that the state is still empty, proving that the dry run command did not commit any changes.
+
+## 5. State Persistence Integration Test
+
+- `test_state_persists_across_restarts`:
+    1.  Run the CLI to add a rule.
+    2.  Stop the test daemon.
+    3.  Start a new test daemon instance that points to the *same temporary state file*.
+    4.  Run the CLI `show` command against the new daemon. Verify that the rule added in step 1 is present, proving that the state was successfully reloaded from the file.
