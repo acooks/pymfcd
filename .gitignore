@@ -1,0 +1,5 @@
+*.log
+*.swp
+perf.data
+nft-dummy-ruleset.txt
+commit_message.txt
