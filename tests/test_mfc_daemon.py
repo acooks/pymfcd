@@ -230,10 +230,6 @@ def test_save_state_writes_correct_json(MockKernelInterface):
 
     # NOTE: We only save the rules. The vif_map is reconstructed on load.
     expected_state = {
-        "vif_map": {
-            "eth0": {"vifi": 0, "ref_count": 1, "ifindex": 10},
-            "eth1": {"vifi": 1, "ref_count": 1, "ifindex": 11},
-        },
         "mfc_rules": [
             {"source": "1.1.1.1", "group": "239.1.1.1", "iif": "eth0", "oifs": ["eth1"]}
         ],

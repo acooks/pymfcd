@@ -144,8 +144,8 @@ class MfcDaemon:
             return False, str(e)
 
     def save_state(self, state_file_path):
-        """Saves the current VIF map and MFC rules to a file."""
-        state = {"vif_map": self.vif_map, "mfc_rules": self.mfc_rules}
+        """Saves the current MFC rules to a file."""
+        state = {"mfc_rules": self.mfc_rules}
         with open(state_file_path, "w") as f:
             json.dump(state, f, indent=2)
 
