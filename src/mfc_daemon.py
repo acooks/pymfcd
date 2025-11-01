@@ -6,6 +6,7 @@ import signal
 import socket
 
 from .kernel_ffi import KernelInterface
+from .validation import CommandValidator
 
 
 def get_ifindex(if_name):
@@ -24,6 +25,7 @@ class MfcDaemon:
 
     def __init__(self):
         self.ki = KernelInterface()
+        self.validator = CommandValidator()
 
         # In-memory state
         # Maps interface names to VIF indices: {'eth0': 0, 'eth1': 1}
@@ -241,45 +243,19 @@ class MfcDaemon:
             self.save_state(state_file_path)
             self.ki.mrt_done()
 
-    def _validate_mfc_payload(self, action, payload):
-        """
-        Validates the payload for ADD_MFC and DEL_MFC actions.
-        Returns (is_valid, error_message).
-        """
-        if "group" not in payload:
-            return False, "Missing required field: 'group'"
-
-        try:
-            socket.inet_aton(payload["group"])
-            if "source" in payload:
-                socket.inet_aton(payload["source"])
-        except (socket.error, TypeError):
-            return False, "Invalid IP address format for source or group."
-
-        if action == "ADD_MFC":
-            if "iif" not in payload:
-                return False, "Missing required field: 'iif'"
-            if "oifs" not in payload or not isinstance(payload["oifs"], list):
-                return False, "Missing or invalid 'oifs' field; must be a list."
-
-        return True, ""
-
     def _handle_command(self, command):
-        """Parses a command and dispatches it to the correct method."""
+        """
+        Validates a command and dispatches it to the correct method.
+        """
+        validated_payload, error_message = self.validator.validate(command)
+
+        if error_message:
+            return {"status": "error", "message": f"Validation failed: {error_message}"}
+
         action = command.get("action")
-        payload = command.get("payload", {})
+        payload = validated_payload
 
         try:
-            # --- Input Validation ---
-            if action in ("ADD_MFC", "DEL_MFC"):
-                is_valid, error_msg = self._validate_mfc_payload(action, payload)
-                if not is_valid:
-                    return {
-                        "status": "error",
-                        "message": f"Validation failed: {error_msg}",
-                    }
-            # ------------------------
-
             if action == "ADD_MFC":
                 success, message = self.add_mfc_rule(
                     source=payload.get("source", "0.0.0.0"),
@@ -321,6 +297,7 @@ class MfcDaemon:
                     },
                 }
             else:
+                # This case should not be reachable due to validation
                 return {"status": "error", "message": f"Unknown action: {action}"}
         except Exception as e:
             return {"status": "error", "message": str(e)}

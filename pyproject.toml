@@ -5,6 +5,7 @@ description = "A daemon and CLI for managing Linux multicast forwarding rules."
 
 dependencies = [
     "pytest-timeout",
+    "jsonschema",
 ]
 
 [tool.setuptools.packages.find]
