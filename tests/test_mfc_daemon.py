@@ -65,7 +65,12 @@ def test_add_mfc_rule_new_vifs(MockKernelInterface):
     )
 
     # Verify internal state was updated
-    assert daemon.vif_map == {"eth0": 0, "eth1": 1, "eth2": 2}
+    assert daemon.vif_map["eth0"]["vifi"] == 0
+    assert daemon.vif_map["eth0"]["ref_count"] == 1
+    assert daemon.vif_map["eth1"]["vifi"] == 1
+    assert daemon.vif_map["eth1"]["ref_count"] == 1
+    assert daemon.vif_map["eth2"]["vifi"] == 2
+    assert daemon.vif_map["eth2"]["ref_count"] == 1
     expected_rule = {"source": source, "group": group, "iif": iif, "oifs": oifs}
     assert expected_rule in daemon.mfc_rules
 
@@ -77,11 +82,14 @@ def test_del_mfc_rule(MockKernelInterface):
     """
     mock_ki = MockKernelInterface.return_value
     daemon = MfcDaemon()
+    daemon._release_vif = MagicMock()
 
     # Pre-populate the state
     source = "192.168.1.10"
     group = "239.1.2.3"
-    rule = {"source": source, "group": group, "iif": "eth0", "oifs": ["eth1"]}
+    iif = "eth0"
+    oifs = ["eth1"]
+    rule = {"source": source, "group": group, "iif": iif, "oifs": oifs}
     daemon.mfc_rules.append(rule)
 
     daemon.del_mfc_rule(source, group)
@@ -91,6 +99,52 @@ def test_del_mfc_rule(MockKernelInterface):
 
     # Verify the rule was removed from the internal state
     assert rule not in daemon.mfc_rules
+
+    # Verify that the VIFs were released
+    daemon._release_vif.assert_any_call(iif)
+    daemon._release_vif.assert_any_call(oifs[0])
+
+
+@patch("src.mfc_daemon.KernelInterface")
+def test_vif_reference_counting_and_deletion(MockKernelInterface):
+    """
+    Tests that VIF reference counts are correctly managed and that VIFs
+    are deleted from the kernel only when they are no longer in use.
+    """
+    mock_ki = MockKernelInterface.return_value
+    daemon = MfcDaemon()
+
+    with patch("src.mfc_daemon.get_ifindex") as mock_get_ifindex:
+        # Assign ifindices: eth0 -> 10, eth1 -> 11
+        mock_get_ifindex.side_effect = [10, 11, 10, 11]
+
+        # 1. Add first rule using eth0 and eth1
+        daemon.add_mfc_rule("1.1.1.1", "239.1.1.1", "eth0", ["eth1"])
+        assert "eth0" in daemon.vif_map
+        assert "eth1" in daemon.vif_map
+        assert daemon.vif_map["eth0"]["ref_count"] == 1
+        assert daemon.vif_map["eth1"]["ref_count"] == 1
+        assert mock_ki._add_vif.call_count == 2
+
+        # 2. Add a second rule using the same interfaces
+        daemon.add_mfc_rule("2.2.2.2", "239.2.2.2", "eth0", ["eth1"])
+        assert daemon.vif_map["eth0"]["ref_count"] == 2  # Ref count should be 2
+        assert daemon.vif_map["eth1"]["ref_count"] == 2
+        assert mock_ki._add_vif.call_count == 2  # No new VIFs should be created
+
+        # 3. Delete the first rule
+        daemon.del_mfc_rule("1.1.1.1", "239.1.1.1")
+        assert daemon.vif_map["eth0"]["ref_count"] == 1  # Ref count should be 1
+        assert daemon.vif_map["eth1"]["ref_count"] == 1
+        assert mock_ki._del_vif.call_count == 0  # No VIFs should be deleted yet
+
+        # 4. Delete the second rule
+        daemon.del_mfc_rule("2.2.2.2", "239.2.2.2")
+        assert "eth0" not in daemon.vif_map  # VIF should be gone
+        assert "eth1" not in daemon.vif_map
+        assert mock_ki._del_vif.call_count == 2  # NOW the VIFs should be deleted
+        mock_ki._del_vif.assert_any_call(vifi=0, ifindex=10)
+        mock_ki._del_vif.assert_any_call(vifi=1, ifindex=11)
 
 
 @patch("src.mfc_daemon.KernelInterface")
@@ -153,7 +207,10 @@ def test_save_state_writes_correct_json(MockKernelInterface):
     daemon = MfcDaemon()
 
     # Pre-populate the state
-    daemon.vif_map = {"eth0": 0, "eth1": 1}
+    daemon.vif_map = {
+        "eth0": {"vifi": 0, "ref_count": 1, "ifindex": 10},
+        "eth1": {"vifi": 1, "ref_count": 1, "ifindex": 11},
+    }
     daemon.mfc_rules = [
         {"source": "1.1.1.1", "group": "239.1.1.1", "iif": "eth0", "oifs": ["eth1"]}
     ]
@@ -171,8 +228,12 @@ def test_save_state_writes_correct_json(MockKernelInterface):
     # Reconstruct the full string written to the file
     written_data = "".join(call.args[0] for call in m().write.call_args_list)
 
+    # NOTE: We only save the rules. The vif_map is reconstructed on load.
     expected_state = {
-        "vif_map": {"eth0": 0, "eth1": 1},
+        "vif_map": {
+            "eth0": {"vifi": 0, "ref_count": 1, "ifindex": 10},
+            "eth1": {"vifi": 1, "ref_count": 1, "ifindex": 11},
+        },
         "mfc_rules": [
             {"source": "1.1.1.1", "group": "239.1.1.1", "iif": "eth0", "oifs": ["eth1"]}
         ],
@@ -184,18 +245,22 @@ def test_save_state_writes_correct_json(MockKernelInterface):
 @patch("src.mfc_daemon.KernelInterface")
 def test_load_state_success(MockKernelInterface):
     """
-    Tests that load_state correctly reads a state file, restores internal
-    state, and re-applies the rules by calling add_mfc_rule.
+    Tests that load_state correctly reads a state file, clears old state,
+    and re-applies the rules by calling add_mfc_rule, which reconstructs
+    the VIF map and ref counts.
     """
     daemon = MfcDaemon()
     # Mock the method that will be called by load_state
     daemon.add_mfc_rule = MagicMock()
 
+    # Pre-populate the daemon with some old state to ensure it gets cleared
+    daemon.vif_map = {"eth99": {"vifi": 99, "ref_count": 1, "ifindex": 99}}
+    daemon.mfc_rules = [{"source": "9.9.9.9", "group": "239.9.9.9", "iif": "eth99"}]
+
     state_content = {
-        "vif_map": {"eth0": 0, "eth1": 1},
         "mfc_rules": [
             {"source": "1.1.1.1", "group": "239.1.1.1", "iif": "eth0", "oifs": ["eth1"]}
-        ],
+        ]
     }
     state_json = json.dumps(state_content)
     state_file_path = "/fake/state.json"
@@ -205,11 +270,11 @@ def test_load_state_success(MockKernelInterface):
         with patch("os.path.exists", return_value=True):
             daemon.load_state(state_file_path)
 
-    # Verify internal state is restored BEFORE re-applying rules
-    assert daemon.vif_map == {"eth0": 0, "eth1": 1}
-    assert daemon._next_vifi == 2
+    # Verify old state was cleared
+    assert "eth99" not in daemon.vif_map
+    assert not any(r["source"] == "9.9.9.9" for r in daemon.mfc_rules)
 
-    # Verify that add_mfc_rule was called to re-apply the state
+    # Verify that add_mfc_rule was called to re-apply the state from the file
     daemon.add_mfc_rule.assert_called_once_with(
         source="1.1.1.1", group="239.1.1.1", iif="eth0", oifs=["eth1"]
     )
@@ -229,7 +294,6 @@ def test_load_state_file_not_found(MockKernelInterface):
     # Verify state remains empty
     assert daemon.vif_map == {}
     assert daemon.mfc_rules == []
-    assert daemon._next_vifi == 0
 
 
 @patch("src.mfc_daemon.KernelInterface")
@@ -291,7 +355,6 @@ def test_add_mfc_transaction_rollback(MockKernelInterface):
     # Verify that the internal state is still clean
     assert daemon.vif_map == {}
     assert daemon.mfc_rules == []
-    assert daemon._next_vifi == 0
 
 
 @patch("src.mfc_daemon.KernelInterface")

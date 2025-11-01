@@ -28,12 +28,12 @@ class MfcDaemon:
         self.validator = CommandValidator()
 
         # In-memory state
-        # Maps interface names to VIF indices: {'eth0': 0, 'eth1': 1}
+        # Maps interface names to a dict containing the VIF index and a ref count
+        # e.g., {'eth0': {'vifi': 0, 'ref_count': 2}}
         self.vif_map = {}
         # A list of rule dicts: [{"source": "...", "group": "...", "iif": "...",
         # "oifs": [...]}, ...]
         self.mfc_rules = []
-        self._next_vifi = 0
         self._running = False
 
     def add_mfc_rule(self, source, group, iif, oifs):
@@ -44,7 +44,10 @@ class MfcDaemon:
         """
         # TODO: Add check for duplicate rule
 
+        # Keep track of interfaces used in this transaction to manage ref_counts
+        interfaces_used = [iif] + oifs
         newly_created_vifs = []
+
         try:
             iif_vifi = self._get_or_create_vif(iif, newly_created_vifs)
             oif_vifis = [
@@ -60,41 +63,57 @@ class MfcDaemon:
             )
             return True, "MFC entry added successfully."
         except Exception as e:
-            # Rollback: delete any VIFs that were created during this failed transaction
-            print(f"[ROLLBACK] Deleting {len(newly_created_vifs)} newly created VIFs.")
-            for if_name, vifi, ifindex in newly_created_vifs:
-                self.ki._del_vif(vifi=vifi, ifindex=ifindex)
-                del self.vif_map[if_name]
-                self._next_vifi -= (
-                    1  # This is a simplification, assumes single-threaded access
-                )
+            # Rollback: decrement ref_counts for all interfaces used in this transaction
+            # This will also trigger deletion of newly created VIFs
+            print("[ROLLBACK] Rolling back VIF changes for transaction.")
+            for if_name in interfaces_used:
+                self._release_vif(if_name)
             raise e
+
+    def _find_next_vifi(self):
+        """Finds the next available VIF index, allowing for reuse of indices."""
+        used_vifis = {v["vifi"] for v in self.vif_map.values()}
+        for i in range(32):  # MAXVIFS
+            if i not in used_vifis:
+                return i
+        raise RuntimeError("Maximum number of VIFs (32) reached.")
 
     def _get_or_create_vif(self, if_name, transaction_log=None):
         """
         Gets the VIF index for a given interface name, creating a new VIF
-        if one does not already exist. Logs the creation for transactional rollback.
+        if one does not already exist, and increments its reference count.
+        Logs the creation for transactional rollback.
         """
         if if_name in self.vif_map:
-            return self.vif_map[if_name]
+            self.vif_map[if_name]["ref_count"] += 1
+            return self.vif_map[if_name]["vifi"]
 
-        if self._next_vifi >= 32:  # MAXVIFS
-            raise RuntimeError("Maximum number of VIFs (32) reached.")
-
+        vifi = self._find_next_vifi()
         ifindex = get_ifindex(if_name)
-        vifi = self._next_vifi
 
         self.ki._add_vif(vifi=vifi, ifindex=ifindex)
 
         # Add to state
-        self.vif_map[if_name] = vifi
-        self._next_vifi += 1
+        self.vif_map[if_name] = {"vifi": vifi, "ref_count": 1, "ifindex": ifindex}
 
         # Log for this transaction
         if transaction_log is not None:
             transaction_log.append((if_name, vifi, ifindex))
 
         return vifi
+
+    def _release_vif(self, if_name):
+        """Decrements the reference count for a VIF and deletes it if unused."""
+        if if_name not in self.vif_map:
+            print(f"[WARNING] Attempted to release a non-existent VIF: {if_name}")
+            return
+
+        self.vif_map[if_name]["ref_count"] -= 1
+        if self.vif_map[if_name]["ref_count"] <= 0:
+            vifi = self.vif_map[if_name]["vifi"]
+            ifindex = self.vif_map[if_name]["ifindex"]
+            self.ki._del_vif(vifi=vifi, ifindex=ifindex)
+            del self.vif_map[if_name]
 
     def del_mfc_rule(self, source, group):
         """
@@ -114,6 +133,12 @@ class MfcDaemon:
 
             self.ki._del_mfc(source_ip=source, group_ip=group)
             self.mfc_rules.remove(rule_to_del)
+
+            # Release the VIFs associated with the rule
+            self._release_vif(rule_to_del["iif"])
+            for oif in rule_to_del["oifs"]:
+                self._release_vif(oif)
+
             return True, "MFC entry deleted successfully."
         except Exception as e:
             return False, str(e)
@@ -125,7 +150,10 @@ class MfcDaemon:
             json.dump(state, f, indent=2)
 
     def load_state(self, state_file_path):
-        """Loads state from a file and re-applies it."""
+        """
+        Loads state from a file and re-applies it. This ensures that VIFs
+        and reference counts are correctly reconstructed.
+        """
         if not os.path.exists(state_file_path):
             print(f"[INFO] State file not found at {state_file_path}. Starting fresh.")
             return
@@ -134,15 +162,16 @@ class MfcDaemon:
             with open(state_file_path, "r") as f:
                 state = json.load(f)
 
-            # Restore internal state first
-            self.vif_map = state.get("vif_map", {})
-            # Ensure _next_vifi is correctly updated
-            if self.vif_map:
-                self._next_vifi = max(self.vif_map.values()) + 1
+            # Clear current in-memory state before loading
+            self.vif_map.clear()
+            self.mfc_rules.clear()
 
-            # Re-apply the rules, which will recreate kernel state
-            # and also repopulate self.mfc_rules
+            # Re-apply the rules, which will recreate kernel state (VIFs)
+            # and correctly populate the vif_map with ref_counts.
             loaded_rules = state.get("mfc_rules", [])
+            print(
+                f"[INFO] Found {len(loaded_rules)} rules to re-apply from state file."
+            )
             for rule in loaded_rules:
                 print(f"[INFO] Re-applying rule: ({rule['source']}, {rule['group']})")
                 self.add_mfc_rule(
