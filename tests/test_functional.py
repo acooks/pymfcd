@@ -81,16 +81,104 @@ def netns_env(tmp_path):
         ) as veth_out:
             veth_out.set(state="up").commit()
 
-            subprocess.run(["ip", "link", "set", "veth-in-p", "netns", ns_name], check=True)
-            subprocess.run(["ip", "link", "set", "veth-out-p", "netns", ns_name], check=True)
-            # Configure interfaces inside the namespace
-            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "veth-in-p", "up"], check=True)
-            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "addr", "add", "10.0.1.1/24", "dev", "veth-in-p"], check=True)
-            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "dev", "veth-in-p", "multicast", "on"], check=True)
+        subprocess.run(
+            ["ip", "link", "set", "veth-in-p", "netns", ns_name], check=True
+        )
+        subprocess.run(
+            ["ip", "link", "set", "veth-out-p", "netns", ns_name], check=True
+        )
+        # Configure interfaces inside the namespace
+        subprocess.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                ns_name,
+                "ip",
+                "link",
+                "set",
+                "veth-in-p",
+                "up",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                ns_name,
+                "ip",
+                "addr",
+                "add",
+                "10.0.1.1/24",
+                "dev",
+                "veth-in-p",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                ns_name,
+                "ip",
+                "link",
+                "set",
+                "dev",
+                "veth-in-p",
+                "multicast",
+                "on",
+            ],
+            check=True,
+        )
 
-            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "veth-out-p", "up"], check=True)
-            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "addr", "add", "10.0.2.1/24", "dev", "veth-out-p"], check=True)
-            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "dev", "veth-out-p", "multicast", "on"], check=True)
+        subprocess.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                ns_name,
+                "ip",
+                "link",
+                "set",
+                "veth-out-p",
+                "up",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                ns_name,
+                "ip",
+                "addr",
+                "add",
+                "10.0.2.1/24",
+                "dev",
+                "veth-out-p",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "ip",
+                "netns",
+                "exec",
+                ns_name,
+                "ip",
+                "link",
+                "set",
+                "dev",
+                "veth-out-p",
+                "multicast",
+                "on",
+            ],
+            check=True,
+        )
         # Start the daemon in a separate process inside the namespace
 
         daemon_cmd = [
@@ -165,7 +253,9 @@ def netns_env(tmp_path):
         for ifname in ["veth-in-h", "veth-out-h"]:
             try:
                 # Check if the interface exists before trying to delete it
-                subprocess.run(["ip", "link", "show", ifname], check=True, capture_output=True)
+                subprocess.run(
+                    ["ip", "link", "show", ifname], check=True, capture_output=True
+                )
                 subprocess.run(["ip", "link", "del", ifname], check=True)
                 print(f"Cleaned up host interface: {ifname}")
             except subprocess.CalledProcessError:
