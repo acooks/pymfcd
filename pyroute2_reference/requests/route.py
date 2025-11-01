@@ -2,9 +2,8 @@ from socket import AF_INET6
 
 from pyroute2.common import AF_MPLS
 from pyroute2.netlink.rtnl import encap_type, rt_proto, rt_scope, rt_type
-from pyroute2.netlink.rtnl.rtmsg import IP6_RT_PRIO_USER, LWTUNNEL_ENCAP_MPLS
+from pyroute2.netlink.rtnl.rtmsg import IP6_RT_PRIO_USER, LWTUNNEL_ENCAP_MPLS, rtmsg
 from pyroute2.netlink.rtnl.rtmsg import nh as nh_header
-from pyroute2.netlink.rtnl.rtmsg import rtmsg
 
 from .common import IPRouteFilter, IPTargets, MPLSTarget, NLAKeyTransform
 

@@ -4,7 +4,6 @@ import threading
 
 import mitogen.core
 import mitogen.master
-
 from pyroute2.iproute.linux import RTNL_API
 from pyroute2.netlink.rtnl.iprsocket import MarshalRtnl
 

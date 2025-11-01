@@ -1,9 +1,8 @@
 import errno
 import time
 import traceback
-from socket import AF_INET, AF_INET6
+from socket import AF_INET, AF_INET6, inet_ntop, inet_pton
 from socket import error as socket_error
-from socket import inet_ntop, inet_pton
 
 from pyroute2 import config
 from pyroute2.common import Dotkeys, View, basestring, dqn2int

@@ -43,8 +43,18 @@ done
 # Set timeout to default if not provided
 TIMEOUT=${TIMEOUT:-$DEFAULT_TIMEOUT}
 
-echo "Running unit tests with a timeout of $TIMEOUT seconds per test..."
-python3 -m pytest --timeout=$TIMEOUT tests/
+# Erase previous coverage data for a clean run
+coverage erase
 
-echo "Running functional tests with a timeout of $TIMEOUT seconds per test..."
-$SUDO_CMD "PYTHONPATH=$(pwd)" python3 -m pytest --timeout=$TIMEOUT tests/test_functional.py
+echo "Running unit tests with coverage and a timeout of $TIMEOUT seconds per test..."
+python3 -m pytest --cov=src --timeout=$TIMEOUT tests/
+
+echo "Running functional tests with coverage (appending) and a timeout of $TIMEOUT seconds per test..."
+$SUDO_CMD "PYTHONPATH=$(pwd)" python3 -m pytest --cov=src --cov-append --timeout=$TIMEOUT tests/test_functional.py
+
+echo
+echo "---------------------------------------------------"
+echo "Combined Unit and Functional Test Coverage Report"
+echo "---------------------------------------------------"
+coverage report -m
+

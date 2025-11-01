@@ -8,8 +8,7 @@ import sys
 import time
 
 import pytest
-
-from pyroute2 import IPDB, NetNS
+from pyroute2 import NDB, netns
 
 # Mark all tests in this file as requiring root privileges
 pytestmark = pytest.mark.skipif(
@@ -20,47 +19,80 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def netns_env(tmp_path):
     """
+
+
     A pytest fixture that sets up a complete, isolated network environment
+
+
     for functional testing.
 
+
+
+
+
     - Creates a network namespace.
+
+
     - Creates two veth pairs for IIF and OIF.
+
+
     - Configures the interfaces inside the namespace.
+
+
     - Starts the daemon inside the namespace.
+
+
     - Yields the namespace name and socket path.
+
+
     - Cleans everything up on teardown.
+
+
     """
+
     ns_name = "functest-ns"
+
     socket_path = str(tmp_path / "mfc_daemon.sock")
+
     state_file = str(tmp_path / "mfc_state.json")
 
-    ipdb = IPDB()
+    ndb = NDB()
 
     # --- Setup ---
+
     try:
+
         # Create namespace
-        NetNS(ns_name)
+
+        netns.create(ns_name)
+
+        ndb.sources.add(netns=ns_name, target=ns_name)
 
         # Create and configure interfaces
-        ipdb.create(kind="veth", ifname="veth-in-h", peer="veth-in-p").commit()
-        ipdb.create(kind="veth", ifname="veth-out-h", peer="veth-out-p").commit()
 
-        with ipdb.interfaces["veth-in-p"] as v:
-            v.net_ns_fd = ns_name
-        with ipdb.interfaces["veth-out-p"] as v:
-            v.net_ns_fd = ns_name
+        # Create and configure interfaces
+        with ndb.interfaces.create(
+            kind="veth", ifname="veth-in-h", peer="veth-in-p"
+        ) as veth_in:
+            veth_in.set(state="up").commit()
 
-        with IPDB(nl=NetNS(ns_name)) as ipdb_ns:
-            with ipdb_ns.interfaces["veth-in-p"] as v:
-                v.add_ip("10.0.1.1/24")
-                v.up()
-                v.multicast = 1
-            with ipdb_ns.interfaces["veth-out-p"] as v:
-                v.add_ip("10.0.2.1/24")
-                v.up()
-                v.multicast = 1
+        with ndb.interfaces.create(
+            kind="veth", ifname="veth-out-h", peer="veth-out-p"
+        ) as veth_out:
+            veth_out.set(state="up").commit()
 
+            subprocess.run(["ip", "link", "set", "veth-in-p", "netns", ns_name], check=True)
+            subprocess.run(["ip", "link", "set", "veth-out-p", "netns", ns_name], check=True)
+            # Configure interfaces inside the namespace
+            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "veth-in-p", "up"], check=True)
+            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "addr", "add", "10.0.1.1/24", "dev", "veth-in-p"], check=True)
+            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "dev", "veth-in-p", "multicast", "on"], check=True)
+
+            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "veth-out-p", "up"], check=True)
+            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "addr", "add", "10.0.2.1/24", "dev", "veth-out-p"], check=True)
+            subprocess.run(["ip", "netns", "exec", ns_name, "ip", "link", "set", "dev", "veth-out-p", "multicast", "on"], check=True)
         # Start the daemon in a separate process inside the namespace
+
         daemon_cmd = [
             "ip",
             "netns",
@@ -74,44 +106,76 @@ def netns_env(tmp_path):
             "--state-file",
             state_file,
         ]
+
         daemon_process = subprocess.Popen(daemon_cmd, preexec_fn=os.setsid)
 
         # Wait for the daemon to be ready by polling the socket
+
         start_time = time.monotonic()
+
         socket_ready = False
+
         while time.monotonic() - start_time < 5:  # 5-second timeout
+
             if daemon_process.poll() is not None:
+
                 pytest.fail("Daemon process terminated unexpectedly during startup.")
+
             try:
+
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+
                     s.connect(socket_path)
+
                 socket_ready = True
+
                 break
+
             except (FileNotFoundError, ConnectionRefusedError):
+
                 time.sleep(0.1)  # Wait 100ms before retrying
 
         if not socket_ready:
+
             pytest.fail("Daemon socket did not become available within 5 seconds.")
 
         yield ns_name, socket_path
 
     finally:
+
         # --- Teardown ---
+
         if "daemon_process" in locals() and daemon_process.poll() is None:
+
             # Use process group kill to ensure daemon and any children are terminated
+
             os.killpg(os.getpgid(daemon_process.pid), signal.SIGTERM)
+
             try:
+
                 daemon_process.wait(timeout=2)
+
             except subprocess.TimeoutExpired:
+
                 os.killpg(os.getpgid(daemon_process.pid), signal.SIGKILL)
+
                 daemon_process.wait()
 
-        if os.path.exists(f"/var/run/netns/{ns_name}"):
-            subprocess.run(
-                ["ip", "netns", "del", ns_name], check=False, capture_output=True
-            )
+        # Clean up host-side veth interfaces
+        for ifname in ["veth-in-h", "veth-out-h"]:
+            try:
+                # Check if the interface exists before trying to delete it
+                subprocess.run(["ip", "link", "show", ifname], check=True, capture_output=True)
+                subprocess.run(["ip", "link", "del", ifname], check=True)
+                print(f"Cleaned up host interface: {ifname}")
+            except subprocess.CalledProcessError:
+                print(f"Host interface {ifname} did not exist or could not be deleted.")
+            except Exception as e:
+                print(f"Warning: Could not remove interface {ifname}: {e}")
 
-        ipdb.release()
+        if os.path.exists(f"/var/run/netns/{ns_name}"):
+            netns.remove(ns_name)
+        ndb.close()
 
 
 def run_cli(socket_path, command):
