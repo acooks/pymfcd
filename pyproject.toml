@@ -18,6 +18,7 @@ exclude = [
     "pyroute2", # Exclude vendored library
     "iproute2", # Exclude vendored library
     "linux", # Exclude vendored library
+    "pyroute2_reference", # Exclude vendored library
 ]
 
 [tool.ruff.lint]

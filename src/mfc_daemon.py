@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 
+from .config import load_config
 from .kernel_ffi import KernelInterface
 from .validation import CommandValidator
 
@@ -217,12 +218,23 @@ class MfcDaemon:
         """The actual signal handler that calls the stop method."""
         self.stop()
 
-    def main_entrypoint(self, socket_path, state_file_path, socket_group):
+    def main_entrypoint(
+        self,
+        socket_path: str | None = None,
+        state_file_path: str | None = None,
+        socket_group: str | None = None,
+    ):
         """
         The main entrypoint for the daemon process. Sets up signal handling,
         loads state, initializes the kernel, runs the main loop, and ensures
         graceful cleanup.
         """
+        # Load configuration
+        config = load_config()
+        socket_path = socket_path or config["socket_path"]
+        state_file_path = state_file_path or config["state_file"]
+        socket_group = socket_group or config["socket_group"]
+
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)

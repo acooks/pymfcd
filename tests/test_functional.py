@@ -6,6 +6,7 @@ import socket
 import subprocess
 import sys
 import time
+from unittest.mock import patch
 
 import pytest
 from pyroute2 import NDB, netns
@@ -19,35 +20,15 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def netns_env(tmp_path):
     """
-
-
     A pytest fixture that sets up a complete, isolated network environment
-
-
     for functional testing.
 
-
-
-
-
     - Creates a network namespace.
-
-
     - Creates two veth pairs for IIF and OIF.
-
-
     - Configures the interfaces inside the namespace.
-
-
     - Starts the daemon inside the namespace.
-
-
     - Yields the namespace name and socket path.
-
-
     - Cleans everything up on teardown.
-
-
     """
 
     ns_name = "functest-ns"
@@ -61,14 +42,9 @@ def netns_env(tmp_path):
     # --- Setup ---
 
     try:
-
         # Create namespace
-
         netns.create(ns_name)
-
         ndb.sources.add(netns=ns_name, target=ns_name)
-
-        # Create and configure interfaces
 
         # Create and configure interfaces
         with ndb.interfaces.create(
@@ -180,51 +156,37 @@ def netns_env(tmp_path):
             check=True,
         )
         # Start the daemon in a separate process inside the namespace
-
         daemon_cmd = [
             "ip",
             "netns",
             "exec",
             ns_name,
+            "env",
+            f"PYTHONPATH={os.getcwd()}",
+            f"MFC_SOCKET_PATH={socket_path}",
+            f"MFC_STATE_FILE={state_file}",
+            "MFC_SOCKET_GROUP=mfc-daemon",  # Default group for testing
             sys.executable,
             "-m",
             "src.daemon_main",  # Run as a module
-            "--socket-path",
-            socket_path,
-            "--state-file",
-            state_file,
         ]
 
         daemon_process = subprocess.Popen(daemon_cmd, preexec_fn=os.setsid)
 
         # Wait for the daemon to be ready by polling the socket
-
         start_time = time.monotonic()
-
         socket_ready = False
-
         while time.monotonic() - start_time < 5:  # 5-second timeout
-
             if daemon_process.poll() is not None:
-
                 pytest.fail("Daemon process terminated unexpectedly during startup.")
-
             try:
-
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-
                     s.connect(socket_path)
-
                 socket_ready = True
-
                 break
-
             except (FileNotFoundError, ConnectionRefusedError):
-
                 time.sleep(0.1)  # Wait 100ms before retrying
-
         if not socket_ready:
-
             pytest.fail("Daemon socket did not become available within 5 seconds.")
 
         yield ns_name, socket_path
