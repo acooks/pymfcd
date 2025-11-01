@@ -32,11 +32,13 @@ class MfcDaemon:
         # "oifs": [...]}, ...]
         self.mfc_rules = []
         self._next_vifi = 0
+        self._running = False
 
     def add_mfc_rule(self, source, group, iif, oifs):
         """
         Adds a new multicast forwarding rule transactionally.
         If adding the MFC entry fails, any newly created VIFs are rolled back.
+        Returns a tuple of (success, message).
         """
         # TODO: Add check for duplicate rule
 
@@ -54,7 +56,8 @@ class MfcDaemon:
             self.mfc_rules.append(
                 {"source": source, "group": group, "iif": iif, "oifs": oifs}
             )
-        except Exception:
+            return True, "MFC entry added successfully."
+        except Exception as e:
             # Rollback: delete any VIFs that were created during this failed transaction
             print(f"[ROLLBACK] Deleting {len(newly_created_vifs)} newly created VIFs.")
             for if_name, vifi, ifindex in newly_created_vifs:
@@ -63,7 +66,7 @@ class MfcDaemon:
                 self._next_vifi -= (
                     1  # This is a simplification, assumes single-threaded access
                 )
-            raise  # Re-raise the original exception
+            raise e
 
     def _get_or_create_vif(self, if_name, transaction_log=None):
         """
@@ -94,19 +97,24 @@ class MfcDaemon:
     def del_mfc_rule(self, source, group):
         """
         Deletes a multicast forwarding rule.
+        Returns a tuple of (success, message).
         """
-        # Find the rule to delete
-        rule_to_del = None
-        for rule in self.mfc_rules:
-            if rule["source"] == source and rule["group"] == group:
-                rule_to_del = rule
-                break
+        try:
+            # Find the rule to delete
+            rule_to_del = None
+            for rule in self.mfc_rules:
+                if rule["source"] == source and rule["group"] == group:
+                    rule_to_del = rule
+                    break
 
-        if not rule_to_del:
-            raise ValueError(f"Rule for ({source}, {group}) not found.")
+            if not rule_to_del:
+                return False, f"Rule for ({source}, {group}) not found."
 
-        self.ki._del_mfc(source_ip=source, group_ip=group)
-        self.mfc_rules.remove(rule_to_del)
+            self.ki._del_mfc(source_ip=source, group_ip=group)
+            self.mfc_rules.remove(rule_to_del)
+            return True, "MFC entry deleted successfully."
+        except Exception as e:
+            return False, str(e)
 
     def save_state(self, state_file_path):
         """Saves the current VIF map and MFC rules to a file."""
@@ -176,7 +184,6 @@ class MfcDaemon:
             # -----------------------------
 
             sock.listen(1)
-
             if server_ready_event:
                 server_ready_event.set()
 
@@ -208,9 +215,7 @@ class MfcDaemon:
         """The actual signal handler that calls the stop method."""
         self.stop()
 
-    def main_entrypoint(
-        self, socket_path, state_file_path, socket_group, server_ready_event=None
-    ):
+    def main_entrypoint(self, socket_path, state_file_path, socket_group):
         """
         The main entrypoint for the daemon process. Sets up signal handling,
         loads state, initializes the kernel, runs the main loop, and ensures
@@ -228,7 +233,7 @@ class MfcDaemon:
             self.ki.mrt_init()
 
             # Run the main IPC loop
-            self.run(socket_path, socket_group, server_ready_event)
+            self.run(socket_path, socket_group)
 
         finally:
             # Graceful shutdown
@@ -276,19 +281,37 @@ class MfcDaemon:
             # ------------------------
 
             if action == "ADD_MFC":
-                self.add_mfc_rule(
+                success, message = self.add_mfc_rule(
                     source=payload.get("source", "0.0.0.0"),
                     group=payload.get("group"),
                     iif=payload.get("iif"),
                     oifs=payload.get("oifs", []),
                 )
-                return {"status": "success"}
+                if success:
+                    return {
+                        "status": "success",
+                        "message": (
+                            f"MFC entry for ({payload.get('source', '0.0.0.0')}, "
+                            f"{payload.get('group')}) added."
+                        ),
+                    }
+                else:
+                    return {"status": "error", "message": message}
             elif action == "DEL_MFC":
-                self.del_mfc_rule(
+                success, message = self.del_mfc_rule(
                     source=payload.get("source", "0.0.0.0"),
                     group=payload.get("group"),
                 )
-                return {"status": "success"}
+                if success:
+                    return {
+                        "status": "success",
+                        "message": (
+                            f"MFC entry for ({payload.get('source', '0.0.0.0')}, "
+                            f"{payload.get('group')}) deleted."
+                        ),
+                    }
+                else:
+                    return {"status": "error", "message": message}
             elif action == "SHOW":
                 return {
                     "status": "success",

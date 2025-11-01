@@ -3,18 +3,24 @@ name = "mfc_controller"
 version = "0.1.0"
 description = "A daemon and CLI for managing Linux multicast forwarding rules."
 
+dependencies = [
+    "pytest-timeout",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.ruff]
 line-length = 88
-select = ["E", "W", "F", "I"]
 exclude = [
     "__pycache__",
     "pyroute2", # Exclude vendored library
     "iproute2", # Exclude vendored library
     "linux", # Exclude vendored library
 ]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
 
 [tool.black]
 line-length = 88

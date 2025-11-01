@@ -4,16 +4,18 @@ import json
 import sys
 
 from .common import send_ipc_command
-from .daemon_main import DEFAULT_SOCKET_PATH
+from .config import load_config
 
 
 def main():
+    config = load_config()
     parser = argparse.ArgumentParser(description="MFC CLI Client")
     parser.add_argument(
         "--socket-path",
-        default=DEFAULT_SOCKET_PATH,
+        default=config["socket_path"],
         help=(
-            f"Path to the daemon's Unix Domain Socket (default: {DEFAULT_SOCKET_PATH})"
+            "Path to the daemon's Unix Domain Socket "
+            f"(default from config: {config['socket_path']})"
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -77,3 +79,7 @@ def main():
     except Exception as e:
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

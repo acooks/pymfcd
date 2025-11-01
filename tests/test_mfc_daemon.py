@@ -94,7 +94,6 @@ def test_del_mfc_rule(MockKernelInterface):
     assert rule not in daemon.mfc_rules
 
 
-
 @patch("src.mfc_daemon.KernelInterface")
 def test_daemon_ipc_command_handling(MockKernelInterface, tmp_path):
     """
@@ -111,7 +110,9 @@ def test_daemon_ipc_command_handling(MockKernelInterface, tmp_path):
     server_ready_event = threading.Event()
     # Corrected args: added a dummy socket_group
     server_thread = threading.Thread(
-        target=daemon.run, args=(socket_path, "root", server_ready_event)
+        target=daemon.run,
+        args=(socket_path, "root"),
+        kwargs={"server_ready_event": server_ready_event},
     )
     server_thread.daemon = (
         True  # Allows main thread to exit even if this one is running
@@ -142,9 +143,6 @@ def test_daemon_ipc_command_handling(MockKernelInterface, tmp_path):
     daemon.add_mfc_rule.assert_called_once_with(
         source="1.1.1.1", group="239.1.1.1", iif="lo", oifs=["lo"]
     )
-
-
-
 
 
 @patch("src.mfc_daemon.KernelInterface")
@@ -295,9 +293,6 @@ def test_add_mfc_transaction_rollback(MockKernelInterface):
     assert daemon.vif_map == {}
     assert daemon.mfc_rules == []
     assert daemon._next_vifi == 0
-
-
-
 
 
 @patch("src.mfc_daemon.KernelInterface")
@@ -455,10 +450,20 @@ def test_run_sets_socket_permissions(
     # Mock the accept call to avoid blocking and value errors
     mock_socket.return_value.accept.side_effect = socket.timeout
 
-    # Use a simple mechanism to stop the loop after one iteration
-    daemon.stop()
+    # Run the daemon in a background thread so we can stop it
+    server_thread = threading.Thread(
+        target=daemon.run, args=(socket_path, socket_group)
+    )
+    server_thread.daemon = True
+    server_thread.start()
 
-    daemon.run(socket_path, socket_group)
+    # Give the server a moment to start and set permissions
+    time.sleep(0.1)
+
+    # Stop the server and wait for the thread to exit
+    daemon.stop()
+    server_thread.join(timeout=2)
+    assert not server_thread.is_alive(), "Daemon thread did not exit in time"
 
     # Verify that the group was looked up
     mock_getgrnam.assert_called_once_with(socket_group)

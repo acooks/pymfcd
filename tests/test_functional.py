@@ -2,6 +2,7 @@
 import json  # Added import
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -75,9 +76,22 @@ def netns_env(tmp_path):
         ]
         daemon_process = subprocess.Popen(daemon_cmd, preexec_fn=os.setsid)
 
-        # Wait for the daemon to be ready
-        time.sleep(1)
-        assert daemon_process.poll() is None, "Daemon failed to start"
+        # Wait for the daemon to be ready by polling the socket
+        start_time = time.monotonic()
+        socket_ready = False
+        while time.monotonic() - start_time < 5:  # 5-second timeout
+            if daemon_process.poll() is not None:
+                pytest.fail("Daemon process terminated unexpectedly during startup.")
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                    s.connect(socket_path)
+                socket_ready = True
+                break
+            except (FileNotFoundError, ConnectionRefusedError):
+                time.sleep(0.1)  # Wait 100ms before retrying
+
+        if not socket_ready:
+            pytest.fail("Daemon socket did not become available within 5 seconds.")
 
         yield ns_name, socket_path
 
@@ -109,11 +123,22 @@ def run_cli(socket_path, command):
         f"--socket-path={socket_path}",
     ] + command
 
-    print(f"Running CLI: {' '.join(cli_cmd)}")
-    result = subprocess.run(cli_cmd, capture_output=True, text=True, check=False)
+    # Create a copy of the current environment and set PYTHONPATH
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.getcwd()
 
-    if result.returncode != 0:
-        print(f"CLI Error:\n{result.stderr}")
+    print(f"Running CLI: {' '.join(cli_cmd)}")
+    result = subprocess.run(
+        cli_cmd, capture_output=True, text=True, check=False, env=env
+    )
+
+    # --- Enhanced Debugging ---
+    print(f"CLI raw stdout:\n---\n{result.stdout}\n---")
+    print(f"CLI raw stderr:\n---\n{result.stderr}\n---")
+    # --------------------------
+
+    # if result.returncode != 0:
+    #     print(f"CLI Error:\n{result.stderr}")
     assert result.returncode == 0
 
     print(f"CLI Output:\n{result.stdout}")
@@ -163,9 +188,9 @@ def test_e2e_add_show_del_show(netns_env):
     print("\n--- Verifying ADD ---")
     time.sleep(0.5)  # Give daemon a moment to process
     expected_route_str = f"({source},{group})"  # Note: no space after comma
-    assert check_mroute_in_ns(ns_name, expected_route_str), (
-        f"Route '{expected_route_str}' not found in kernel after add"
-    )
+    assert check_mroute_in_ns(
+        ns_name, expected_route_str
+    ), f"Route '{expected_route_str}' not found in kernel after add"
 
     # --- 3. Delete the route ---
     print("\n--- Testing DEL ---")
@@ -175,6 +200,6 @@ def test_e2e_add_show_del_show(netns_env):
     # --- 4. Verify the route is gone ---
     print("\n--- Verifying DEL ---")
     time.sleep(0.5)
-    assert not check_mroute_in_ns(ns_name, expected_route_str), (
-        f"Route '{expected_route_str}' still found in kernel after del"
-    )
+    assert not check_mroute_in_ns(
+        ns_name, expected_route_str
+    ), f"Route '{expected_route_str}' still found in kernel after del"
