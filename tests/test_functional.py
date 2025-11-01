@@ -210,21 +210,17 @@ def netns_env(tmp_path):
         yield ns_name, socket_path
 
     finally:
-
         # --- Teardown ---
 
         if "daemon_process" in locals() and daemon_process.poll() is None:
-
             # Use process group kill to ensure daemon and any children are terminated
 
             os.killpg(os.getpgid(daemon_process.pid), signal.SIGTERM)
 
             try:
-
                 daemon_process.wait(timeout=2)
 
             except subprocess.TimeoutExpired:
-
                 os.killpg(os.getpgid(daemon_process.pid), signal.SIGKILL)
 
                 daemon_process.wait()
@@ -322,9 +318,9 @@ def test_e2e_add_show_del_show(netns_env):
     print("\n--- Verifying ADD ---")
     time.sleep(0.5)  # Give daemon a moment to process
     expected_route_str = f"({source},{group})"  # Note: no space after comma
-    assert check_mroute_in_ns(
-        ns_name, expected_route_str
-    ), f"Route '{expected_route_str}' not found in kernel after add"
+    assert check_mroute_in_ns(ns_name, expected_route_str), (
+        f"Route '{expected_route_str}' not found in kernel after add"
+    )
 
     # --- 3. Delete the route ---
     print("\n--- Testing DEL ---")
@@ -334,6 +330,6 @@ def test_e2e_add_show_del_show(netns_env):
     # --- 4. Verify the route is gone ---
     print("\n--- Verifying DEL ---")
     time.sleep(0.5)
-    assert not check_mroute_in_ns(
-        ns_name, expected_route_str
-    ), f"Route '{expected_route_str}' still found in kernel after del"
+    assert not check_mroute_in_ns(ns_name, expected_route_str), (
+        f"Route '{expected_route_str}' still found in kernel after del"
+    )
