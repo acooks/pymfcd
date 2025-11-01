@@ -129,6 +129,24 @@ Client-daemon communication uses JSON over a Unix Domain Socket.
     pip install cffi pyroute2 pytest
     ```
 
+### Code Style and Quality
+
+This project adheres to strict code style and quality standards enforced by `black` for formatting and `ruff` for linting.
+
+*   **Black (Code Formatter):** Used to ensure consistent code formatting across the entire project.
+    ```bash
+    pip install black
+    black .
+    ```
+*   **Ruff (Linter):** Used to enforce code quality, identify potential bugs, and ensure adherence to best practices.
+    ```bash
+    pip install ruff
+    ruff check .
+    ruff format .
+    ```
+
+It is recommended to run these tools before submitting any changes to ensure consistency.
+
 ## 5. Usage
 
 All commands must be run from the root of the project directory and require root privileges.

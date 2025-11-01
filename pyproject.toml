@@ -5,3 +5,35 @@ description = "A daemon and CLI for managing Linux multicast forwarding rules."
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 88
+select = ["E", "W", "F", "I"]
+exclude = [
+    "__pycache__",
+    "pyroute2", # Exclude vendored library
+    "iproute2", # Exclude vendored library
+    "linux", # Exclude vendored library
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+include = '\.pyi?$'
+exclude = '''
+/( 
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.ruff_cache
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | iproute2
+  | linux
+  | pyroute2
+)
+'''

@@ -1,7 +1,8 @@
 # src/kernel_ffi.py
-from cffi import FFI
-import socket
 import os
+import socket
+
+from cffi import FFI
 
 # --- Python Constants ---
 IPPROTO_IP = 0
@@ -14,6 +15,7 @@ MRT_ADD_MFC = 204
 MRT_DEL_MFC = 205
 VIFF_USE_IFINDEX = 0x8
 
+
 class KernelInterface:
     """
     A dedicated class to encapsulate all low-level interaction with the
@@ -25,7 +27,7 @@ class KernelInterface:
         // Basic types from the kernel headers
         typedef unsigned short vifi_t;
         typedef unsigned int socklen_t;
-        
+
         struct in_addr {
             unsigned int s_addr;
         };
@@ -61,7 +63,8 @@ class KernelInterface:
         };
 
         // The function we need to call
-        int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
+        int setsockopt(int sockfd, int level, int optname, const void *optval,
+                       socklen_t optlen);
     """
 
     def __init__(self):
@@ -82,7 +85,7 @@ class KernelInterface:
         routing engine for this process.
         """
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, IPPROTO_IGMP)
-        
+
         init_val = self.ffi.new("int*", 1)
         ret = self.libc.setsockopt(
             self.sock.fileno(),
@@ -156,7 +159,7 @@ class KernelInterface:
 
         # Set TTLs for output VIFs. A TTL of 1 is standard.
         for vifi in oif_vifis:
-            if 0 <= vifi < 32: # MAXVIFS
+            if 0 <= vifi < 32:  # MAXVIFS
                 mfc_ctl.mfcc_ttls[vifi] = 1
 
         ret = self.libc.setsockopt(

@@ -1,6 +1,22 @@
 # tests/test_kernel_ffi.py
+import socket
+from unittest.mock import MagicMock, patch
+
 import pytest
-from src.kernel_ffi import KernelInterface
+
+from src.kernel_ffi import (
+    IPPROTO_IGMP,
+    IPPROTO_IP,
+    MRT_ADD_MFC,
+    MRT_ADD_VIF,
+    MRT_DEL_MFC,
+    MRT_DEL_VIF,
+    MRT_DONE,
+    MRT_INIT,
+    VIFF_USE_IFINDEX,
+    KernelInterface,
+)
+
 
 def test_kernel_interface_initialization_and_struct_sizes():
     """
@@ -23,29 +39,14 @@ def test_kernel_interface_initialization_and_struct_sizes():
     assert ki.ffi.sizeof("struct vifctl") == 16
 
 
-from unittest.mock import MagicMock, patch
-import socket
-
-from src.kernel_ffi import (
-    IPPROTO_IP,
-    IPPROTO_IGMP,
-    MRT_INIT,
-    MRT_DONE,
-    MRT_ADD_VIF,
-    MRT_DEL_VIF,
-    MRT_ADD_MFC,
-    MRT_DEL_MFC,
-    VIFF_USE_IFINDEX,
-)
-
 def test_mrt_init_success():
     """
     Tests that mrt_init() correctly opens a socket and calls MRT_INIT.
     """
     # We patch the socket call to avoid creating a real socket
-    with patch('socket.socket') as mock_socket_constructor:
+    with patch("socket.socket") as mock_socket_constructor:
         mock_sock_instance = MagicMock()
-        mock_sock_instance.fileno.return_value = 5 # a dummy file descriptor
+        mock_sock_instance.fileno.return_value = 5  # a dummy file descriptor
         mock_socket_constructor.return_value = mock_sock_instance
 
         ki = KernelInterface()
@@ -56,7 +57,9 @@ def test_mrt_init_success():
         ki.mrt_init()
 
         # Assert socket was created correctly
-        mock_socket_constructor.assert_called_once_with(socket.AF_INET, socket.SOCK_RAW, IPPROTO_IGMP)
+        mock_socket_constructor.assert_called_once_with(
+            socket.AF_INET, socket.SOCK_RAW, IPPROTO_IGMP
+        )
         assert ki.sock is not None
 
         # Assert setsockopt was called correctly for MRT_INIT
@@ -70,15 +73,16 @@ def test_mrt_init_success():
         assert args[3][0] == 1
         assert args[4] == ki.ffi.sizeof("int")
 
+
 def test_mrt_init_failure_raises_oserror():
     """
     Tests that mrt_init() raises an OSError if the setsockopt call fails.
     """
-    with patch('socket.socket'):
+    with patch("socket.socket"):
         ki = KernelInterface()
         ki.libc = MagicMock()
-        ki.libc.setsockopt.return_value = -1 # Simulate failure
-        ki.ffi.errno = 1 # EPERM (Permission denied)
+        ki.libc.setsockopt.return_value = -1  # Simulate failure
+        ki.ffi.errno = 1  # EPERM (Permission denied)
 
         with pytest.raises(OSError, match=r"\[MRT_INIT\] Operation not permitted"):
             ki.mrt_init()
@@ -88,7 +92,7 @@ def test_mrt_done_success():
     """
     Tests that mrt_done() correctly calls MRT_DONE and closes the socket.
     """
-    with patch('socket.socket') as mock_socket_constructor:
+    with patch("socket.socket") as mock_socket_constructor:
         mock_sock_instance = MagicMock()
         mock_sock_instance.fileno.return_value = 5
         mock_socket_constructor.return_value = mock_sock_instance
@@ -96,7 +100,7 @@ def test_mrt_done_success():
         ki = KernelInterface()
         ki.libc = MagicMock()
         ki.libc.setsockopt.return_value = 0
-        ki.sock = mock_sock_instance # Manually set the mock socket
+        ki.sock = mock_sock_instance  # Manually set the mock socket
 
         ki.mrt_done()
 
@@ -113,11 +117,12 @@ def test_mrt_done_success():
         mock_sock_instance.close.assert_called_once()
         assert ki.sock is None
 
+
 def test_mrt_done_failure_raises_oserror():
     """
     Tests that mrt_done() raises an OSError if the setsockopt call fails.
     """
-    with patch('socket.socket') as mock_socket_constructor:
+    with patch("socket.socket") as mock_socket_constructor:
         mock_sock_instance = MagicMock()
         mock_sock_instance.fileno.return_value = 5
         mock_socket_constructor.return_value = mock_sock_instance
@@ -125,7 +130,7 @@ def test_mrt_done_failure_raises_oserror():
         ki = KernelInterface()
         ki.libc = MagicMock()
         ki.libc.setsockopt.return_value = -1
-        ki.ffi.errno = 1 # EPERM
+        ki.ffi.errno = 1  # EPERM
         ki.sock = mock_sock_instance
 
         with pytest.raises(OSError, match=r"\[MRT_DONE\] Operation not permitted"):
@@ -194,19 +199,19 @@ def test_add_mfc_success():
     # Verify the contents of the mfcctl struct
     mfcctl_ptr = args[3]
     assert isinstance(mfcctl_ptr, type(ki.ffi.new("struct mfcctl*")))
-    
+
     # Check IP addresses (verify they were converted to little-endian integers)
-    expected_origin = int.from_bytes(socket.inet_aton(source_ip), 'little')
-    expected_group = int.from_bytes(socket.inet_aton(group_ip), 'little')
+    expected_origin = int.from_bytes(socket.inet_aton(source_ip), "little")
+    expected_group = int.from_bytes(socket.inet_aton(group_ip), "little")
     assert mfcctl_ptr.mfcc_origin.s_addr == expected_origin
     assert mfcctl_ptr.mfcc_mcastgrp.s_addr == expected_group
 
     # Check VIF info
     assert mfcctl_ptr.mfcc_parent == iif_vifi
-    assert mfcctl_ptr.mfcc_ttls[1] == 1 # TTL threshold is 1 for output VIFs
+    assert mfcctl_ptr.mfcc_ttls[1] == 1  # TTL threshold is 1 for output VIFs
     assert mfcctl_ptr.mfcc_ttls[3] == 1
-    assert mfcctl_ptr.mfcc_ttls[0] == 0 # Input VIF should have TTL 0
-    assert mfcctl_ptr.mfcc_ttls[2] == 0 # Unused VIF should have TTL 0
+    assert mfcctl_ptr.mfcc_ttls[0] == 0  # Input VIF should have TTL 0
+    assert mfcctl_ptr.mfcc_ttls[2] == 0  # Unused VIF should have TTL 0
 
     assert args[4] == ki.ffi.sizeof("struct mfcctl")
 
@@ -223,7 +228,7 @@ def test_del_vif_success():
     ki.sock.fileno.return_value = 5
 
     vifi = 1
-    ifindex = 10 # Note: ifindex is needed to identify the VIF to delete
+    ifindex = 10  # Note: ifindex is needed to identify the VIF to delete
 
     ki._del_vif(vifi, ifindex)
 
@@ -257,7 +262,7 @@ def test_del_mfc_success():
     assert args[2] == MRT_DEL_MFC
 
     mfcctl_ptr = args[3]
-    expected_origin = int.from_bytes(socket.inet_aton(source_ip), 'little')
-    expected_group = int.from_bytes(socket.inet_aton(group_ip), 'little')
+    expected_origin = int.from_bytes(socket.inet_aton(source_ip), "little")
+    expected_group = int.from_bytes(socket.inet_aton(group_ip), "little")
     assert mfcctl_ptr.mfcc_origin.s_addr == expected_origin
     assert mfcctl_ptr.mfcc_mcastgrp.s_addr == expected_group
