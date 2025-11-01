@@ -52,15 +52,15 @@ This document outlines the development tasks required to implement the Python Mu
     -   Wrap the `add_mfc_rule` logic in a `try...except` block.
     -   If any kernel call fails, the `except` block must call the appropriate `_del_vif` or `_del_mfc` methods to roll back to the previous state.
 -   [x] **Task 2.3:** Implement a robust `SIGTERM` handler that guarantees `mrt_done()` is called for a clean shutdown.
--   [ ] **Task 2.4:** Implement strict input validation for all payloads received from the IPC socket. Reject any malformed or invalid requests *before* attempting kernel operations.
+-   [x] **Task 2.4:** Implement strict input validation for all payloads received from the IPC socket. Reject any malformed or invalid requests *before* attempting kernel operations.
 
 ### `config.py` & `common.py`
--   [ ] **Task 2.5:** Implement `load_config()` to read paths and settings from `/etc/mfc_daemon.conf`.
--   [ ] **Task 2.6:** In the daemon, use the loaded config for the UDS path and state file path.
--   [ ] **Task 2.7:** In `common.py`, implement logic for the daemon to set strict file permissions on the UDS.
+-   [x] **Task 2.5:** Implement `load_config()` to read paths and settings from `/etc/mfc_daemon.conf`.
+-   [x] **Task 2.6:** In the daemon, use the loaded config for the UDS path and state file path.
+-   [x] **Task 2.7:** In `common.py`, implement logic for the daemon to set strict file permissions on the UDS.
 
 ### Systemd Integration
--   [ ] **Task 2.8:** Write the `mfc_daemon.service` file.
+-   [x] **Task 2.8:** Write the `mfc_daemon.service` file.
 -   [ ] **Task 2.9:** (Optional, Advanced) Implement `sd_notify` support in the daemon to signal readiness to `systemd`.
 
 ### Testing

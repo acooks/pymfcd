@@ -3,7 +3,7 @@ This module defines the JSON schemas for validating IPC commands
 sent to the mfc_daemon.
 """
 
-from jsonschema import validate, ValidationError
+from jsonschema import ValidationError, validate
 
 # Base schema for any command, requiring an 'action' field.
 base_command_schema = {
