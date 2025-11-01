@@ -1,0 +1,14 @@
+[Unit]
+Description=MFC Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=mfc-daemon
+ExecStart=/usr/bin/python3 /home/acooks/encypted_vxlan_experiment_2/src/daemon_main.py
+WorkingDirectory=/home/acooks/encypted_vxlan_experiment_2
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
