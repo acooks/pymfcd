@@ -81,7 +81,12 @@ def test_cli_show(mock_send_ipc):
                 "eth1": {"vifi": 1, "ifindex": 3, "ref_count": 1},
             },
             "mfc_rules": [
-                {"source": "1.1.1.1", "group": "239.1.1.1", "iif": "eth0", "oifs": ["eth1"]},
+                {
+                    "source": "1.1.1.1",
+                    "group": "239.1.1.1",
+                    "iif": "eth0",
+                    "oifs": ["eth1"],
+                },
             ],
         },
     }

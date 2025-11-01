@@ -1,9 +1,23 @@
+# General
 *.log
 *.swp
 perf.data
 nft-dummy-ruleset.txt
 commit_message.txt
+
+# Python
 __pycache__/
 *.egg-info
 *.pyc
+build/
+dist/
+.pytest_cache/
+.coverage
+
+# Virtual Environments
+.venv
+venv
+env
+
+# Gemini
 .gemini/

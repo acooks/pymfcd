@@ -1,8 +1,7 @@
 # tests/test_cli_output.py
-import pytest
-from unittest.mock import patch
 import io
 import json
+from unittest.mock import patch
 
 from src.mfc_cli import _print_show_output, main
 
@@ -53,6 +52,7 @@ def test_print_show_output_format():
         _print_show_output(response)
         assert mock_stdout.getvalue().strip() == expected_output.strip()
 
+
 def test_show_command_empty_state():
     """
     Tests the 'show' command with an empty state from the daemon.
@@ -76,6 +76,7 @@ def test_show_command_empty_state():
     with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
         _print_show_output(response)
         assert mock_stdout.getvalue().strip() == expected_output.strip()
+
 
 @patch("src.mfc_cli.send_ipc_command")
 def test_main_show_command_integration(mock_send_ipc):
@@ -106,6 +107,7 @@ def test_main_show_command_integration(mock_send_ipc):
             main()
             assert mock_stdout.getvalue().strip() == expected_output.strip()
 
+
 @patch("src.mfc_cli.send_ipc_command")
 def test_main_show_command_json_output(mock_send_ipc):
     """
@@ -127,6 +129,7 @@ def test_main_show_command_json_output(mock_send_ipc):
             # Use json.loads to normalize formatting
             assert json.loads(mock_stdout.getvalue()) == response
 
+
 @patch("src.mfc_cli.send_ipc_command")
 def test_main_other_command_json_output(mock_send_ipc):
     """
@@ -136,8 +139,21 @@ def test_main_other_command_json_output(mock_send_ipc):
     mock_send_ipc.return_value = response
 
     with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-        with patch("sys.argv", ["mfc_cli", "mfc", "add", "--group", "224.1.1.1", "--iif", "eth0", "--oifs", "eth1"]):
-             main()
-             # The output should be the JSON response
-             # Use json.loads to normalize formatting
-             assert json.loads(mock_stdout.getvalue()) == response
+        with patch(
+            "sys.argv",
+            [
+                "mfc_cli",
+                "mfc",
+                "add",
+                "--group",
+                "224.1.1.1",
+                "--iif",
+                "eth0",
+                "--oifs",
+                "eth1",
+            ],
+        ):
+            main()
+            # The output should be the JSON response
+            # Use json.loads to normalize formatting
+            assert json.loads(mock_stdout.getvalue()) == response

@@ -73,7 +73,9 @@ def main():
     # --- 'show' command ---
     show_parser = subparsers.add_parser("show", help="Show current state")
     show_parser.add_argument(
-        "--json", action="store_true", help="Output raw JSON instead of formatted tables"
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted tables",
     )
 
     args = parser.parse_args()
@@ -103,7 +105,11 @@ def main():
 
     try:
         response = send_ipc_command(args.socket_path, command)
-        if args.command == "show" and response.get("status") == "success" and not args.json:
+        if (
+            args.command == "show"
+            and response.get("status") == "success"
+            and not args.json
+        ):
             _print_show_output(response)
         else:
             print(json.dumps(response, indent=2))
