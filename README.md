@@ -194,9 +194,21 @@ Once the `mfc_daemon` is running as a Systemd service, you can interact with it 
 
 **1. Show current multicast forwarding state:**
 
+To view the state in a human-readable table format:
 ```bash
 sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli show
-# Expected output (example - actual output is raw JSON):
+# Expected output (example):
+# Virtual Interface Table (VIFs)
+#   No VIFs configured.
+#
+# Multicast Forwarding Cache (MFC)
+#   No MFC rules installed.
+```
+
+To view the state as raw JSON (useful for scripting):
+```bash
+sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli show --json
+# Expected output (example):
 # {
 #   "status": "success",
 #   "payload": {
@@ -238,16 +250,35 @@ sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli mfc add \
 
 **4. Show state after adding rules:**
 
+To view the state in a human-readable table format:
 ```bash
 sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli show
-# Expected output (example - actual output is raw JSON):
+# Expected output (example):
+# Virtual Interface Table (VIFs)
+# VIF   Interface        Index      Ref Count
+# ---------------------------------------------
+# 0     veth-in-p        <idx>      2
+# 1     veth-out-p       <idx>      1
+# 2     eth0             <idx>      1
+#
+# Multicast Forwarding Cache (MFC)
+# Source             Group              IIF              OIFs
+# ----------------------------------------------------------------------
+# 10.0.1.10          239.10.20.30       veth-in-p        veth-out-p
+# 10.0.1.11          239.10.20.31       veth-in-p        eth0
+```
+
+To view the state as raw JSON:
+```bash
+sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli show --json
+# Expected output (example):
 # {
 #   "status": "success",
 #   "payload": {
 #     "vif_map": {
-#       "veth-in-p": {"vifi": 0, "ref_count": 2, "ifindex": <idx>},
-#       "veth-out-p": {"vifi": 1, "ref_count": 1, "ifindex": <idx>},
-#       "eth0": {"vifi": 2, "ref_count": 1, "ifindex": <idx>}
+#       "veth-in-p": {"vifi": 0, "ref_count": 2, "ifindex": "<idx>"},
+#       "veth-out-p": {"vifi": 1, "ref_count": 1, "ifindex": "<idx>"},
+#       "eth0": {"vifi": 2, "ref_count": 1, "ifindex": "<idx>"}
 #     },
 #     "mfc_rules": [
 #       {"source": "10.0.1.10", "group": "239.10.20.30", "iif": "veth-in-p", "oifs": ["veth-out-p"]},
@@ -274,15 +305,32 @@ sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli mfc del \
 
 Note that `veth-out-p` will be removed from `vif_map` as its ref count drops to 0.
 
+To view the state in a human-readable table format:
 ```bash
 sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli show
-# Expected output (example - actual output is raw JSON):
+# Expected output (example):
+# Virtual Interface Table (VIFs)
+# VIF   Interface        Index      Ref Count
+# ---------------------------------------------
+# 0     veth-in-p        <idx>      1
+# 2     eth0             <idx>      1
+#
+# Multicast Forwarding Cache (MFC)
+# Source             Group              IIF              OIFs
+# ----------------------------------------------------------------------
+# 10.0.1.11          239.10.20.31       veth-in-p        eth0
+```
+
+To view the state as raw JSON:
+```bash
+sudo "PYTHONPATH=$(pwd)" python3 -m src.mfc_cli show --json
+# Expected output (example):
 # {
 #   "status": "success",
 #   "payload": {
 #     "vif_map": {
-#       "veth-in-p": {"vifi": 0, "ref_count": 1, "ifindex": <idx>},
-#       "eth0": {"vifi": 2, "ref_count": 1, "ifindex": <idx>}
+#       "veth-in-p": {"vifi": 0, "ref_count": 1, "ifindex": "<idx>"},
+#       "eth0": {"vifi": 2, "ref_count": 1, "ifindex": "<idx>"}
 #     },
 #     "mfc_rules": [
 #       {"source": "10.0.1.11", "group": "239.10.20.31", "iif": "veth-in-p", "oifs": ["eth0"]}

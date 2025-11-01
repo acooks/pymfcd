@@ -76,8 +76,13 @@ def test_cli_show(mock_send_ipc):
     mock_send_ipc.return_value = {
         "status": "success",
         "payload": {
-            "vif_map": {"eth0": 0, "eth1": 1},
-            "mfc_rules": [["1.1.1.1", "239.1.1.1"]],
+            "vif_map": {
+                "eth0": {"vifi": 0, "ifindex": 2, "ref_count": 1},
+                "eth1": {"vifi": 1, "ifindex": 3, "ref_count": 1},
+            },
+            "mfc_rules": [
+                {"source": "1.1.1.1", "group": "239.1.1.1", "iif": "eth0", "oifs": ["eth1"]},
+            ],
         },
     }
 

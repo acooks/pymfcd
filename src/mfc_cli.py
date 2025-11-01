@@ -7,6 +7,38 @@ from .common import send_ipc_command
 from .config import load_config
 
 
+def _print_show_output(response):
+    """Formats and prints the output of the 'show' command."""
+    payload = response.get("payload", {})
+    vif_map = payload.get("vif_map", {})
+    mfc_rules = payload.get("mfc_rules", [])
+
+    # --- Print VIF Table ---
+    print("Virtual Interface Table (VIFs)")
+    if not vif_map:
+        print("  No VIFs configured.")
+    else:
+        print(f"{'VIF':<5} {'Interface':<15} {'Index':<10} {'Ref Count':<10}")
+        print("-" * 45)
+        for if_name, data in vif_map.items():
+            print(
+                f"{data['vifi']:<5} {if_name:<15} {data['ifindex']:<10} "
+                f"{data['ref_count']:<10}"
+            )
+
+    print("\nMulticast Forwarding Cache (MFC)")
+    if not mfc_rules:
+        print("  No MFC rules installed.")
+    else:
+        print(f"{'Source':<18} {'Group':<18} {'IIF':<15} {'OIFs'}")
+        print("-" * 70)
+        for rule in mfc_rules:
+            oifs_str = ", ".join(rule["oifs"])
+            print(
+                f"{rule['source']:<18} {rule['group']:<18} {rule['iif']:<15} {oifs_str}"
+            )
+
+
 def main():
     config = load_config()
     parser = argparse.ArgumentParser(description="MFC CLI Client")
@@ -39,7 +71,10 @@ def main():
     del_parser.add_argument("--group", required=True, help="Multicast group IP address")
 
     # --- 'show' command ---
-    subparsers.add_parser("show", help="Show current state")
+    show_parser = subparsers.add_parser("show", help="Show current state")
+    show_parser.add_argument(
+        "--json", action="store_true", help="Output raw JSON instead of formatted tables"
+    )
 
     args = parser.parse_args()
 
@@ -68,7 +103,10 @@ def main():
 
     try:
         response = send_ipc_command(args.socket_path, command)
-        print(json.dumps(response, indent=2))
+        if args.command == "show" and response.get("status") == "success" and not args.json:
+            _print_show_output(response)
+        else:
+            print(json.dumps(response, indent=2))
     except ConnectionRefusedError:
         print(
             f"Error: Connection to daemon at {args.socket_path} refused. "
