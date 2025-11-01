@@ -6,3 +6,4 @@ commit_message.txt
 __pycache__/
 *.egg-info
 *.pyc
+.gemini/
