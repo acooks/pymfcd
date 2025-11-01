@@ -1,5 +1,5 @@
 [project]
-name = "mfc_controller"
+name = "pymfcd"
 version = "0.1.0"
 description = "A daemon and CLI for managing Linux multicast forwarding rules."
 readme = "README.md"
@@ -25,8 +25,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/your-username/mfc-controller"
-"Bug Tracker" = "https://github.com/your-username/mfc-controller/issues"
+"Homepage" = "https://github.com/your-username/pymfcd"
+"Bug Tracker" = "https://github.com/your-username/pymfcd/issues"
 
 
 [tool.setuptools.packages.find]

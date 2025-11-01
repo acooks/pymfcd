@@ -1,4 +1,4 @@
-# Python Multicast Forwarding Controller Service
+# pymfcd: A Python Multicast Forwarding Cache Daemon
 
 This project implements a simple controller for the Linux kernel multicast forwarding cache (MFC entries). It enables a configuration of "static multicast joins".
 
@@ -163,7 +163,7 @@ This will:
 3.  Reload the Systemd daemon and enable the service to start on boot.
 
 ```bash
-cd /path/to/mfc-controller
+cd /path/to/pymfcd
 sudo make install-service
 ```
 
