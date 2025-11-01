@@ -61,14 +61,9 @@ def netns_env(tmp_path):
     # --- Setup ---
 
     try:
-
         # Create namespace
-
         netns.create(ns_name)
-
         ndb.sources.add(netns=ns_name, target=ns_name)
-
-        # Create and configure interfaces
 
         # Create and configure interfaces
         with ndb.interfaces.create(
@@ -81,9 +76,7 @@ def netns_env(tmp_path):
         ) as veth_out:
             veth_out.set(state="up").commit()
 
-        subprocess.run(
-            ["ip", "link", "set", "veth-in-p", "netns", ns_name], check=True
-        )
+        subprocess.run(["ip", "link", "set", "veth-in-p", "netns", ns_name], check=True)
         subprocess.run(
             ["ip", "link", "set", "veth-out-p", "netns", ns_name], check=True
         )
@@ -180,15 +173,16 @@ def netns_env(tmp_path):
             check=True,
         )
         # Start the daemon in a separate process inside the namespace
-
         daemon_cmd = [
             "ip",
             "netns",
             "exec",
             ns_name,
+            "env",
+            f"PYTHONPATH={os.getcwd()}",
             sys.executable,
             "-m",
-            "src.daemon_main",  # Run as a module
+            "src.daemon_main",
             "--socket-path",
             socket_path,
             "--state-file",
@@ -198,33 +192,19 @@ def netns_env(tmp_path):
         daemon_process = subprocess.Popen(daemon_cmd, preexec_fn=os.setsid)
 
         # Wait for the daemon to be ready by polling the socket
-
         start_time = time.monotonic()
-
         socket_ready = False
-
         while time.monotonic() - start_time < 5:  # 5-second timeout
-
             if daemon_process.poll() is not None:
-
                 pytest.fail("Daemon process terminated unexpectedly during startup.")
-
             try:
-
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-
                     s.connect(socket_path)
-
                 socket_ready = True
-
                 break
-
             except (FileNotFoundError, ConnectionRefusedError):
-
                 time.sleep(0.1)  # Wait 100ms before retrying
-
         if not socket_ready:
-
             pytest.fail("Daemon socket did not become available within 5 seconds.")
 
         yield ns_name, socket_path

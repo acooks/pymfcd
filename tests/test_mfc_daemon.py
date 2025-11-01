@@ -1,6 +1,5 @@
 # tests/test_mfc_daemon.py
 import json
-import socket
 import threading
 import time
 from unittest.mock import MagicMock, mock_open, patch
@@ -317,12 +316,14 @@ def test_daemon_graceful_shutdown(MockKernelInterface, tmp_path):
     stopper_thread.start()
 
     # This call will block until the run loop exits
-    # Corrected call: added dummy socket_group
-    daemon.main_entrypoint(socket_path, state_path, "root")
+    daemon.main_entrypoint(
+        socket_path=socket_path,
+        state_file_path=state_path,
+        socket_group="root",
+    )
 
     stopper_thread.join()
 
     # Verify cleanup actions in the 'finally' block were performed
     daemon.save_state.assert_called_once_with(state_path)
     daemon.ki.mrt_done.assert_called_once()
-
