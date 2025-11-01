@@ -1,22 +1,40 @@
 # src/daemon_main.py
+import argparse
 import os
 import sys
 
+from .config import load_config
 from .mfc_daemon import MfcDaemon
 
 
 def main():
-    # Ensure state directory exists (using default from config for now)
-    # This will be refined when config is fully integrated
-    state_dir = "/var/lib/mfc_daemon"
+    # Load configuration from file first
+    config = load_config()
+
+    parser = argparse.ArgumentParser(description="MFC Daemon Service")
+    parser.add_argument(
+        "--socket-path",
+        default=config["socket_path"],
+        help=f"Path to the Unix Domain Socket (default: {config['socket_path']})",
+    )
+    parser.add_argument(
+        "--state-file",
+        default=config["state_file"],
+        help=f"Path to the state persistence file (default: {config['state_file']})",
+    )
+    args = parser.parse_args()
+
+    # Ensure state directory exists
+    state_dir = os.path.dirname(args.state_file)
     if state_dir and not os.path.exists(state_dir):
         os.makedirs(state_dir, exist_ok=True)
 
     daemon = MfcDaemon()
+    # Pass the resolved config values to the entrypoint
     daemon.main_entrypoint(
-        socket_path=os.environ.get("MFC_SOCKET_PATH"),
-        state_file_path=os.environ.get("MFC_STATE_FILE"),
-        socket_group=os.environ.get("MFC_SOCKET_GROUP"),
+        socket_path=args.socket_path,
+        state_file_path=args.state_file,
+        socket_group=config["socket_group"],
     )
 
 
