@@ -32,7 +32,7 @@ dependencies = [
 "Bug Tracker" = "https://github.com/your-username/pymfcd/issues"
 
 [project.scripts]
-mfc-cli = "pymfcd.mfc_cli:main"
+mfc = "src.mfc_cli:main"
 
 [tool.ruff]
 line-length = 88
